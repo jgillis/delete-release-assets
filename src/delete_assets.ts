@@ -21,6 +21,22 @@ function getRepo() {
   return github.context.repo;
 }
 
+async function deleteAsset(client: any, repo: any, assetId: number) {
+  while (true) {
+    try {
+      await client.rest.repos.deleteReleaseAsset({ ...repo, asset_id: assetId });
+      break;
+    } catch (error) {
+      if (error.status === 403 && error.message.includes("API rate limit")) {
+        console.log("API rate limit exceeded, waiting for 60 seconds before retrying...");
+        await new Promise(resolve => setTimeout(resolve, 60000)); // Wait for 60 seconds
+      } else {
+        throw error; // Re-throw the error if it's not a rate limit error
+      }
+    }
+  }
+}
+
 export async function delete_assets() {
   const repo = getRepo();
   const token = core.getInput("token");
@@ -42,13 +58,22 @@ export async function delete_assets() {
   }
 
   console.log(`Looking for release with tag '${tag}'...`);
-  // getReleaseByTagName does not search for drafts
-  const releases = await client.paginate("GET /repos/{owner}/{repo}/releases", {
-    owner: repo.owner,
-    repo: repo.repo
-  })
 
-  const release = releases.find(r => r.tag_name == tag);
+  try {
+    const { data: release } = await client.rest.repos.getReleaseByTag({
+      owner: repo.owner,
+      repo: repo.repo,
+      tag
+    });
+  } catch (error) {
+    // getReleaseByTagName does not search for drafts
+    const releases = await client.paginate("GET /repos/{owner}/{repo}/releases", {
+      owner: repo.owner,
+      repo: repo.repo
+    })
+
+    release = releases.find(r => r.tag_name == tag);
+  }
   if (release === undefined) {
     const msg = `No release with tag '${tag}' found.`;
     if (fail_if_no_release) {
@@ -82,9 +107,10 @@ export async function delete_assets() {
   console.log("delete matching assets:");
   for (const asset of assets_to_delete) {
     console.log(`  ${asset.id} '${asset.name}'`);
-    await client.rest.repos.deleteReleaseAsset({ ...repo, asset_id: asset.id });
+    await deleteAsset(client, repo, asset.id);
   }
 
   core.setOutput("deleted-assets", assets_to_delete.map(a => a.name).join(";"));
   core.setOutput("release-id", release.id.toString());
 }
+
