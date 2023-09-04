@@ -26,7 +26,7 @@ async function deleteAsset(client: any, repo: any, assetId: number) {
     try {
       await client.rest.repos.deleteReleaseAsset({ ...repo, asset_id: assetId });
       break;
-    } catch (error) {
+    } catch (error : any) {
       if (error.status === 403 && error.message.includes("API rate limit")) {
         console.log("API rate limit exceeded, waiting for 60 seconds before retrying...");
         await new Promise(resolve => setTimeout(resolve, 60000)); // Wait for 60 seconds
@@ -59,13 +59,15 @@ export async function delete_assets() {
 
   console.log(`Looking for release with tag '${tag}'...`);
 
+  let release;
   try {
-    const { data: release } = await client.rest.repos.getReleaseByTag({
+    const response = await client.rest.repos.getReleaseByTag({
       owner: repo.owner,
       repo: repo.repo,
       tag
     });
-  } catch (error) {
+    release = response.data;
+  } catch (error : any) {
     // getReleaseByTagName does not search for drafts
     const releases = await client.paginate("GET /repos/{owner}/{repo}/releases", {
       owner: repo.owner,
@@ -92,7 +94,7 @@ export async function delete_assets() {
   console.log(`matching against:`);
   asset_patterns.forEach(pattern => console.log(`  '${pattern}'`))
   const assets_to_delete = release.assets
-    .filter(asset => matches_any(asset.name, asset_patterns));
+    .filter((asset:any) => matches_any(asset.name, asset_patterns));
 
   if (assets_to_delete.length == 0) {
     const msg = "No assets in the release match the provided patterns.";
@@ -110,7 +112,7 @@ export async function delete_assets() {
     await deleteAsset(client, repo, asset.id);
   }
 
-  core.setOutput("deleted-assets", assets_to_delete.map(a => a.name).join(";"));
+  core.setOutput("deleted-assets", assets_to_delete.map((a: any) => a.name).join(";"));
   core.setOutput("release-id", release.id.toString());
 }
 
